@@ -142,59 +142,44 @@ def detect_emotion():
     except:
         return "no face detected", frame
 
-# ========================
-# GET 30 SONGS
-# ========================
 def get_spotify_recommendations(query, emotion):
-
     songs = []
     seen = set()
 
     try:
-        results = sp.search(q=query, type="artist", limit=1)
-        artists = results.get("artists", {}).get("items", [])
+        # 🔍 search tracks directly
+        results = sp.search(q=query, type="track", limit=30)
 
-        if artists:
-            artist_id = artists[0]["id"]
+        for track in results["tracks"]["items"]:
+            url = track["external_urls"]["spotify"]
+            if url not in seen:
+                songs.append({
+                    "name": f"{track['name']} — {track['artists'][0]['name']}",
+                    "url": url
+                })
+                seen.add(url)
 
-            albums = sp.artist_albums(artist_id, limit=10)
-
-            for album in albums["items"]:
-                tracks = sp.album_tracks(album["id"])
-
-                for t in tracks["items"]:
-                    url = f"https://open.spotify.com/track/{t['id']}"
-                    if url not in seen:
-                        songs.append({
-                            "name": t["name"],
-                            "url": url
-                        })
-                        seen.add(url)
-
-        # fallback by emotion genre
-        if len(songs) < 30:
+        # 🎵 fallback using emotion genre
+        if len(songs) < 20:
             genre = emotion_genres.get(emotion, "pop")
-            playlists = sp.search(q=genre, type="playlist", limit=3)
 
-            for p in playlists["playlists"]["items"]:
-                tracks = sp.playlist_tracks(p["id"])
+            mood_results = sp.search(q=genre, type="track", limit=30)
 
-                for item in tracks["items"]:
-                    track = item["track"]
-                    if track:
-                        url = track["external_urls"]["spotify"]
-                        if url not in seen:
-                            songs.append({
-                                "name": track["name"],
-                                "url": url
-                            })
-                            seen.add(url)
+            for track in mood_results["tracks"]["items"]:
+                url = track["external_urls"]["spotify"]
+                if url not in seen:
+                    songs.append({
+                        "name": f"{track['name']} — {track['artists'][0]['name']}",
+                        "url": url
+                    })
+                    seen.add(url)
 
-        return songs[:30]
+        return songs[:20]
 
     except Exception as e:
         st.error(f"Spotify Error: {e}")
         return []
+
 
 # ========================
 # YOUTUBE FALLBACK
