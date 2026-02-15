@@ -119,27 +119,47 @@ def detect_emotion(image):
 # ========================
 def get_spotify_recommendations(query, emotion):
     try:
-        songs=[]
-        artist=sp.search(q=query,type="artist",limit=1)
-        items=artist.get("artists",{}).get("items",[])
+        songs = []
+        seen = set()
+
+        # 🔹 Try artist top tracks
+        artist = sp.search(q=query, type="artist", limit=1)
+        items = artist.get("artists", {}).get("items", [])
 
         if items:
-            tracks=sp.artist_top_tracks(items[0]["id"],country="IN")
-            for t in tracks["tracks"][:5]:
-                songs.append((t["name"],t["external_urls"]["spotify"]))
+            tracks = sp.artist_top_tracks(items[0]["id"], country="IN")
+            for t in tracks["tracks"]:
+                url = t["external_urls"]["spotify"]
+                if url not in seen:
+                    songs.append((t["name"], url))
+                    seen.add(url)
+                if len(songs) >= 30:
+                    return songs
 
-        if not songs:
-            mood=emotion_genres.get(emotion,"pop")
-            playlists=sp.search(q=mood,type="playlist",limit=1)
-            pid=playlists["playlists"]["items"][0]["id"]
-            tracks=sp.playlist_tracks(pid)
-            for item in tracks["items"][:5]:
-                tr=item["track"]
-                songs.append((tr["name"],tr["external_urls"]["spotify"]))
+        # 🔹 If not enough → search playlists
+        mood = emotion_genres.get(emotion, "pop")
+        playlists = sp.search(q=f"{query} {mood}", type="playlist", limit=5)
+
+        for pl in playlists["playlists"]["items"]:
+            tracks = sp.playlist_tracks(pl["id"], limit=50)
+
+            for item in tracks["items"]:
+                track = item.get("track")
+                if track:
+                    url = track["external_urls"]["spotify"]
+                    if url not in seen:
+                        songs.append((track["name"], url))
+                        seen.add(url)
+
+                if len(songs) >= 30:
+                    return songs
 
         return songs
-    except:
+
+    except Exception as e:
+        st.error(f"Spotify Error: {e}")
         return []
+
 
 # ========================
 # YOUTUBE FALLBACK
