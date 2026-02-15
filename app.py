@@ -6,7 +6,6 @@ from PIL import Image
 import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
 from googleapiclient.discovery import build
-import os
 
 # ========================
 # PAGE CONFIG
@@ -18,13 +17,13 @@ st.set_page_config(
 )
 
 # ========================
-# ENV VARIABLES (STREAMLIT CLOUD)
+# SECRETS (STREAMLIT CLOUD)
 # ========================
 CLIENT_ID = st.secrets["SPOTIFY_CLIENT_ID"]
 CLIENT_SECRET = st.secrets["SPOTIFY_CLIENT_SECRET"]
 YOUTUBE_API_KEY = st.secrets["YOUTUBE_API_KEY"]
 
-# Spotify setup
+# Spotify
 sp = spotipy.Spotify(
     auth_manager=SpotifyClientCredentials(
         client_id=CLIENT_ID,
@@ -32,11 +31,11 @@ sp = spotipy.Spotify(
     )
 )
 
-# YouTube setup
+# YouTube
 youtube = build("youtube", "v3", developerKey=YOUTUBE_API_KEY)
 
 # ========================
-# EMOTION SETTINGS
+# SETTINGS
 # ========================
 emotion_genres = {
     "happy": "pop",
@@ -59,97 +58,92 @@ emoji_map = {
 }
 
 # ========================
-# AESTHETIC UI
+# UI STYLE
 # ========================
-def load_css():
-    st.markdown("""
-    <style>
-    .stApp {
-        background: linear-gradient(135deg,#0f2027,#203a43,#2c5364);
-        color: white;
-    }
+st.markdown("""
+<style>
+.stApp {
+    background: linear-gradient(135deg,#0f2027,#203a43,#2c5364);
+    color:white;
+}
 
-    /* BUTTON */
-    div.stButton > button {
-        background: rgba(255,255,255,0.08);
-        color: white;
-        border-radius: 14px;
-        border: 1px solid rgba(255,255,255,0.2);
-        font-weight: 600;
-        height: 3em;
-        width: 100%;
-        backdrop-filter: blur(6px);
-        transition: 0.2s;
-    }
+div.stButton > button {
+    background: rgba(255,255,255,0.08);
+    color:white;
+    border-radius:14px;
+    border:1px solid rgba(255,255,255,0.25);
+    font-weight:600;
+    height:3em;
+    width:100%;
+}
 
-    div.stButton > button:hover {
-        background: rgba(255,255,255,0.15);
-        border: 1px solid rgba(255,255,255,0.4);
-        transform: scale(1.02);
-    }
+div.stButton > button:hover {
+    background: rgba(255,255,255,0.15);
+    border:1px solid rgba(255,255,255,0.45);
+}
 
-    /* CARD */
-    .song-card {
-        background: rgba(255,255,255,0.06);
-        padding: 14px;
-        margin: 8px 0;
-        border-radius: 14px;
-        backdrop-filter: blur(8px);
-    }
+.song-card {
+    background: rgba(255,255,255,0.08);
+    padding:14px;
+    margin:8px 0;
+    border-radius:14px;
+}
 
-    .song-card a {
-        color: #1DB954;
-        font-weight: 600;
-        text-decoration: none;
-    }
-    </style>
-    """, unsafe_allow_html=True)
+.song-card a {
+    color:#1DB954;
+    text-decoration:none;
+    font-weight:600;
+}
+</style>
+""", unsafe_allow_html=True)
 
-load_css()
-def detect_emotion():
-    st.info("📸 Capture or upload photo")
+# ========================
+# IMAGE INPUT (OUTSIDE BUTTON)
+# ========================
+st.markdown("### 📸 Capture or Upload Photo")
 
-    image_file = st.camera_input("Take photo")
+camera_photo = st.camera_input("Take a photo")
+uploaded_photo = st.file_uploader("Or upload image", type=["jpg","jpeg","png"])
 
-    if image_file is None:
-        image_file = st.file_uploader(
-            "Or upload image",
-            type=["jpg","jpeg","png"]
-        )
+image = None
 
-    if image_file is None:
-        return None, None
+if camera_photo:
+    image = Image.open(camera_photo).convert("RGB")
+elif uploaded_photo:
+    image = Image.open(uploaded_photo).convert("RGB")
 
-    image = Image.open(image_file).convert("RGB")
-    st.image(image, caption="Preview", use_container_width=True)
+if image:
+    st.image(image, caption="Selected Image", use_container_width=True)
 
+# ========================
+# EMOTION DETECTION
+# ========================
+def detect_emotion(image):
     frame = np.array(image)
 
-    # resize for speed & reliability
-    frame = cv2.resize(frame, (224, 224))
+    # resize improves detection reliability
+    frame = cv2.resize(frame, (640, 480))
 
     try:
         result = DeepFace.analyze(
             frame,
             actions=['emotion'],
-            detector_backend='opencv',   # fastest & stable
+            detector_backend='opencv',   # most stable on cloud
             enforce_detection=False
         )
+        return result[0]["dominant_emotion"], frame
+    except:
+        return None, frame
 
-        emotion = result[0]["dominant_emotion"]
-        return emotion, frame
-
-    except Exception as e:
-        st.error("Face detection failed. Try better lighting.")
-        return "no face detected", frame
-
-
+# ========================
+# SPOTIFY (20 SONGS)
+# ========================
 def get_spotify_recommendations(query, emotion):
     songs = []
     seen = set()
 
     try:
-        # 🎤 1️⃣ Artist search (MOST RELIABLE)
+        # 1️⃣ Artist search
         artist_results = sp.search(q=query, type="artist", limit=1)
         artists = artist_results.get("artists", {}).get("items", [])
 
@@ -160,13 +154,10 @@ def get_spotify_recommendations(query, emotion):
             for track in top_tracks["tracks"]:
                 url = track["external_urls"]["spotify"]
                 if url not in seen:
-                    songs.append({
-                        "name": f"{track['name']} — {track['artists'][0]['name']}",
-                        "url": url
-                    })
+                    songs.append((track["name"], url))
                     seen.add(url)
 
-        # 🎵 2️⃣ Playlist search for more songs
+        # 2️⃣ Playlist search for more tracks
         playlists = sp.search(q=query, type="playlist", limit=3)
 
         for playlist in playlists["playlists"]["items"]:
@@ -177,16 +168,13 @@ def get_spotify_recommendations(query, emotion):
                 if track:
                     url = track["external_urls"]["spotify"]
                     if url not in seen:
-                        songs.append({
-                            "name": f"{track['name']} — {track['artists'][0]['name']}",
-                            "url": url
-                        })
+                        songs.append((track["name"], url))
                         seen.add(url)
 
                 if len(songs) >= 20:
                     return songs
 
-        # 🎧 3️⃣ Emotion fallback if still low
+        # 3️⃣ Emotion fallback
         if len(songs) < 20:
             mood = emotion_genres.get(emotion, "pop")
             playlists = sp.search(q=mood, type="playlist", limit=1)
@@ -200,22 +188,21 @@ def get_spotify_recommendations(query, emotion):
                     if track:
                         url = track["external_urls"]["spotify"]
                         if url not in seen:
-                            songs.append({
-                                "name": f"{track['name']} — {track['artists'][0]['name']}",
-                                "url": url
-                            })
+                            songs.append((track["name"], url))
                             seen.add(url)
 
                     if len(songs) >= 20:
                         break
 
     except Exception as e:
-        st.error(f"Spotify Error: {e}")
+        st.error(f"Spotify error: {e}")
 
     return songs[:20]
 
+# ========================
+# YOUTUBE FALLBACK
+# ========================
 def get_youtube_videos(query):
-
     request = youtube.search().list(
         q=query,
         part="snippet",
@@ -225,13 +212,11 @@ def get_youtube_videos(query):
     response = request.execute()
 
     videos = []
-
     for item in response["items"]:
-        videos.append({
-            "name": item["snippet"]["title"],
-            "url": f"https://www.youtube.com/watch?v={item['id']['videoId']}"
-        })
-
+        videos.append((
+            item["snippet"]["title"],
+            f"https://www.youtube.com/watch?v={item['id']['videoId']}"
+        ))
     return videos
 
 # ========================
@@ -244,18 +229,18 @@ artist = st.text_input("Artist or Genre")
 
 if st.button("Detect Mood & Play Music"):
 
-    if not artist.strip():
-        st.warning("Enter an artist or genre")
+    if image is None:
+        st.warning("Please upload or capture a photo.")
         st.stop()
 
-    emotion, frame = detect_emotion()
+    if not artist.strip():
+        st.warning("Enter an artist or genre.")
+        st.stop()
+
+    emotion, frame = detect_emotion(image)
 
     if emotion is None:
-        st.info("Capture or upload an image")
-        st.stop()
-
-    if emotion == "no face detected":
-        st.error("No face detected. Try better lighting.")
+        st.error("Face not detected. Try good lighting & centered face.")
         st.stop()
 
     emoji = emoji_map.get(emotion, "")
@@ -266,23 +251,19 @@ if st.button("Detect Mood & Play Music"):
 
     if songs:
         st.subheader("🎵 Recommendations")
-
-        for s in songs:
+        for name, url in songs:
             st.markdown(
-                f"<div class='song-card'><b>{s['name']}</b><br>"
-                f"<a href='{s['url']}' target='_blank'>Open in Spotify</a></div>",
+                f"<div class='song-card'><b>{name}</b><br>"
+                f"<a href='{url}' target='_blank'>▶ Open in Spotify</a></div>",
                 unsafe_allow_html=True
             )
-
     else:
         st.warning("Spotify unavailable → YouTube results")
-
-        videos = get_youtube_videos(f"{artist} {emotion} music")
-
-        for v in videos:
+        vids = get_youtube_videos(f"{artist} {emotion} music")
+        for name, url in vids:
             st.markdown(
-                f"<div class='song-card'><b>{v['name']}</b><br>"
-                f"<a href='{v['url']}' target='_blank'>Watch</a></div>",
+                f"<div class='song-card'><b>{name}</b><br>"
+                f"<a href='{url}' target='_blank'>▶ Watch</a></div>",
                 unsafe_allow_html=True
             )
 
