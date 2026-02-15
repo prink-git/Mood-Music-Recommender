@@ -108,45 +108,56 @@ def load_css():
 load_css()
 
 def detect_emotion():
-    st.info("📸 Take a photo or upload one")
+    st.info("📸 Capture or upload photo")
 
-    image_file = st.camera_input("Take a photo")
+    image_file = st.camera_input("Take photo")
 
     if image_file is None:
-        image_file = st.file_uploader("Or upload image", type=["jpg", "jpeg", "png"])
+        image_file = st.file_uploader("Or upload image", type=["jpg","jpeg","png"])
 
     if image_file is None:
         return None, None
 
-    # read image
     image = Image.open(image_file).convert("RGB")
+
+    st.image(image, caption="Preview", use_container_width=True)
+
     frame = np.array(image)
 
-    # show preview (CONFIRM upload works)
-    st.image(image, caption="Uploaded Image", use_container_width=True)
-
-    # resize → improves detection
+    # ✅ resize smaller (critical)
     frame = cv2.resize(frame, (480, 480))
 
-    # auto brightness correction
-    gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
-    if gray.mean() < 60:
-        frame = cv2.convertScaleAbs(frame, alpha=1.5, beta=30)
+    # ✅ improve brightness & contrast
+    lab = cv2.cvtColor(frame, cv2.COLOR_RGB2LAB)
+    l, a, b = cv2.split(lab)
+    l = cv2.equalizeHist(l)
+    frame = cv2.merge((l,a,b))
+    frame = cv2.cvtColor(frame, cv2.COLOR_LAB2RGB)
 
     try:
+        # 🔹 try RetinaFace
         result = DeepFace.analyze(
             frame,
             actions=['emotion'],
-            enforce_detection=False,
-            detector_backend='opencv'   # ⭐ FAST & RELIABLE
+            detector_backend='retinaface',
+            enforce_detection=False
         )
-
         emotion = result[0]["dominant_emotion"]
-        return emotion, frame
 
-    except Exception as e:
-        st.warning("Face detection failed. Try better lighting & face centered.")
-        return "no face detected", frame
+    except:
+        try:
+            # 🔹 fallback OpenCV (super reliable)
+            result = DeepFace.analyze(
+                frame,
+                actions=['emotion'],
+                detector_backend='opencv',
+                enforce_detection=False
+            )
+            emotion = result[0]["dominant_emotion"]
+        except:
+            return "no face detected", frame
+
+    return emotion, frame
 
 
 def get_spotify_recommendations(query, emotion):
