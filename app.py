@@ -106,13 +106,6 @@ def load_css():
     """, unsafe_allow_html=True)
 
 load_css()
-# load model once (prevents freezing)
-@st.cache_resource
-def load_emotion_model():
-    return DeepFace.build_model("Emotion")
-
-emotion_model = load_emotion_model()
-
 def detect_emotion():
     st.info("📸 Capture or upload photo")
 
@@ -120,7 +113,8 @@ def detect_emotion():
 
     if image_file is None:
         image_file = st.file_uploader(
-            "Or upload image", type=["jpg","jpeg","png"]
+            "Or upload image",
+            type=["jpg","jpeg","png"]
         )
 
     if image_file is None:
@@ -131,24 +125,24 @@ def detect_emotion():
 
     frame = np.array(image)
 
-    # resize smaller → faster processing
+    # resize for speed & reliability
     frame = cv2.resize(frame, (224, 224))
 
     try:
         result = DeepFace.analyze(
             frame,
             actions=['emotion'],
-            enforce_detection=False,
-            detector_backend='opencv',
-            models={'emotion': emotion_model}
+            detector_backend='opencv',   # fastest & stable
+            enforce_detection=False
         )
 
         emotion = result[0]["dominant_emotion"]
         return emotion, frame
 
     except Exception as e:
-        st.error("Detection failed. Try better lighting.")
+        st.error("Face detection failed. Try better lighting.")
         return "no face detected", frame
+
 
 def get_spotify_recommendations(query, emotion):
     songs = []
