@@ -19,3 +19,4 @@ streamlit-webrtc==0.63.5
 tenacity==9.1.2
 tensorflow==2.15.0
 python-dotenv==1.0.0
+tf-keras==2.15.0
