@@ -106,6 +106,12 @@ def load_css():
     """, unsafe_allow_html=True)
 
 load_css()
+# load model once (prevents freezing)
+@st.cache_resource
+def load_emotion_model():
+    return DeepFace.build_model("Emotion")
+
+emotion_model = load_emotion_model()
 
 def detect_emotion():
     st.info("📸 Capture or upload photo")
@@ -113,51 +119,36 @@ def detect_emotion():
     image_file = st.camera_input("Take photo")
 
     if image_file is None:
-        image_file = st.file_uploader("Or upload image", type=["jpg","jpeg","png"])
+        image_file = st.file_uploader(
+            "Or upload image", type=["jpg","jpeg","png"]
+        )
 
     if image_file is None:
         return None, None
 
     image = Image.open(image_file).convert("RGB")
-
     st.image(image, caption="Preview", use_container_width=True)
 
     frame = np.array(image)
 
-    # ✅ resize smaller (critical)
-    frame = cv2.resize(frame, (480, 480))
-
-    # ✅ improve brightness & contrast
-    lab = cv2.cvtColor(frame, cv2.COLOR_RGB2LAB)
-    l, a, b = cv2.split(lab)
-    l = cv2.equalizeHist(l)
-    frame = cv2.merge((l,a,b))
-    frame = cv2.cvtColor(frame, cv2.COLOR_LAB2RGB)
+    # resize smaller → faster processing
+    frame = cv2.resize(frame, (224, 224))
 
     try:
-        # 🔹 try RetinaFace
         result = DeepFace.analyze(
             frame,
             actions=['emotion'],
-            detector_backend='retinaface',
-            enforce_detection=False
+            enforce_detection=False,
+            detector_backend='opencv',
+            models={'emotion': emotion_model}
         )
+
         emotion = result[0]["dominant_emotion"]
+        return emotion, frame
 
-    except:
-        try:
-            # 🔹 fallback OpenCV (super reliable)
-            result = DeepFace.analyze(
-                frame,
-                actions=['emotion'],
-                detector_backend='opencv',
-                enforce_detection=False
-            )
-            emotion = result[0]["dominant_emotion"]
-        except:
-            return "no face detected", frame
-
-    return emotion, frame
+    except Exception as e:
+        st.error("Detection failed. Try better lighting.")
+        return "no face detected", frame
 
 def get_spotify_recommendations(query, emotion):
     songs = []
