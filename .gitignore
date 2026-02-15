@@ -1,17 +1,32 @@
-# Created by venv; see https://docs.python.org/3/library/venv.html
+# Virtual environments
 venv/
 mood-music-env/
+
+# Python cache
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
-venv/
-mood-music-env/
+
+# Logs
 *.log
+
+# IDE files
 .vscode/
-.ipynb_checkpoints
+.ipynb_checkpoints/
+
+# OS files
 .DS_Store
-keys.py
+
+# Secrets & keys
 .env
+keys.py
 
+# Streamlit / build cache
+.cache/
+.streamlit/
 
+# Model / large files (optional)
+*.h5
+*.pb
+*.pt
