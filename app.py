@@ -90,24 +90,34 @@ def detect_emotion():
     image_file = st.camera_input("Take a photo")
 
     if image_file is None:
-        image_file = st.file_uploader("Or upload image", type=["jpg","jpeg","png"])
+        image_file = st.file_uploader("Or upload image", type=["jpg", "jpeg", "png"])
 
     if image_file is None:
         return None, None
 
-    image = Image.open(image_file)
-    frame = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+    # open image
+    image = Image.open(image_file).convert("RGB")
+    frame = np.array(image)
+
+    # show preview so user knows upload worked
+    st.image(image, caption="Uploaded Image", use_column_width=True)
+
+    # resize for better detection
+    frame = cv2.resize(frame, (640, 480))
 
     try:
         result = DeepFace.analyze(
             frame,
             actions=['emotion'],
             enforce_detection=False,
-            detector_backend='opencv'
+            detector_backend='retinaface'   # more reliable
         )
+
         emotion = result[0]["dominant_emotion"]
         return emotion, frame
-    except:
+
+    except Exception as e:
+        st.warning("Face not detected. Try better lighting & face centered.")
         return "no face detected", frame
 
 # ========================
