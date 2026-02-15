@@ -107,40 +107,47 @@ def load_css():
 
 load_css()
 
-# ========================
-# EMOTION DETECTION
-# ========================
 def detect_emotion():
-    st.info("📸 Take or upload a photo")
+    st.info("📸 Take a photo or upload one")
 
-    image_file = st.camera_input("Take Photo")
+    image_file = st.camera_input("Take a photo")
 
     if image_file is None:
-        image_file = st.file_uploader("Or upload image", type=["jpg","jpeg","png"])
+        image_file = st.file_uploader("Or upload image", type=["jpg", "jpeg", "png"])
 
     if image_file is None:
         return None, None
 
+    # read image
     image = Image.open(image_file).convert("RGB")
     frame = np.array(image)
 
+    # show preview (CONFIRM upload works)
     st.image(image, caption="Uploaded Image", use_container_width=True)
 
-    frame = cv2.resize(frame, (640, 480))
+    # resize → improves detection
+    frame = cv2.resize(frame, (480, 480))
+
+    # auto brightness correction
+    gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
+    if gray.mean() < 60:
+        frame = cv2.convertScaleAbs(frame, alpha=1.5, beta=30)
 
     try:
         result = DeepFace.analyze(
             frame,
             actions=['emotion'],
             enforce_detection=False,
-            detector_backend='opencv'
+            detector_backend='opencv'   # ⭐ FAST & RELIABLE
         )
 
         emotion = result[0]["dominant_emotion"]
         return emotion, frame
 
-    except:
+    except Exception as e:
+        st.warning("Face detection failed. Try better lighting & face centered.")
         return "no face detected", frame
+
 
 def get_spotify_recommendations(query, emotion):
     songs = []
