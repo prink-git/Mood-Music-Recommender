@@ -7,21 +7,24 @@ import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
 from googleapiclient.discovery import build
 import os
-from dotenv import load_dotenv
 
 # ========================
-# ENV
+# PAGE CONFIG
 # ========================
-load_dotenv()
+st.set_page_config(
+    page_title="Mood Music Recommender",
+    page_icon="🎧",
+    layout="centered"
+)
 
-CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID") or st.secrets.get("SPOTIFY_CLIENT_ID")
-CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET") or st.secrets.get("SPOTIFY_CLIENT_SECRET")
-YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY") or st.secrets.get("YOUTUBE_API_KEY")
+# ========================
+# ENV VARIABLES (STREAMLIT CLOUD)
+# ========================
+CLIENT_ID = st.secrets["SPOTIFY_CLIENT_ID"]
+CLIENT_SECRET = st.secrets["SPOTIFY_CLIENT_SECRET"]
+YOUTUBE_API_KEY = st.secrets["YOUTUBE_API_KEY"]
 
-if not CLIENT_ID or not CLIENT_SECRET or not YOUTUBE_API_KEY:
-    st.error("API keys missing.")
-    st.stop()
-
+# Spotify setup
 sp = spotipy.Spotify(
     auth_manager=SpotifyClientCredentials(
         client_id=CLIENT_ID,
@@ -29,10 +32,11 @@ sp = spotipy.Spotify(
     )
 )
 
+# YouTube setup
 youtube = build("youtube", "v3", developerKey=YOUTUBE_API_KEY)
 
 # ========================
-# SETTINGS
+# EMOTION SETTINGS
 # ========================
 emotion_genres = {
     "happy": "pop",
@@ -55,172 +59,216 @@ emoji_map = {
 }
 
 # ========================
-# CSS (YOUR ORIGINAL STYLE)
+# AESTHETIC UI
 # ========================
 def load_css():
     st.markdown("""
     <style>
-        .stApp {
-            background: linear-gradient(135deg,#0f2027,#203a43,#2c5364);
-            color:white;
-        }
-        h1,h2,h3 { text-align:center; }
-        .song-card {
-            background: rgba(255,255,255,0.08);
-            padding:14px;
-            margin:10px 0;
-            border-radius:14px;
-        }
-        .song-card a {
-            color:#1DB954;
-            text-decoration:none;
-            font-weight:bold;
-        }
+    .stApp {
+        background: linear-gradient(135deg,#0f2027,#203a43,#2c5364);
+        color: white;
+    }
+
+    /* BUTTON */
+    div.stButton > button {
+        background: rgba(255,255,255,0.08);
+        color: white;
+        border-radius: 14px;
+        border: 1px solid rgba(255,255,255,0.2);
+        font-weight: 600;
+        height: 3em;
+        width: 100%;
+        backdrop-filter: blur(6px);
+        transition: 0.2s;
+    }
+
+    div.stButton > button:hover {
+        background: rgba(255,255,255,0.15);
+        border: 1px solid rgba(255,255,255,0.4);
+        transform: scale(1.02);
+    }
+
+    /* CARD */
+    .song-card {
+        background: rgba(255,255,255,0.06);
+        padding: 14px;
+        margin: 8px 0;
+        border-radius: 14px;
+        backdrop-filter: blur(8px);
+    }
+
+    .song-card a {
+        color: #1DB954;
+        font-weight: 600;
+        text-decoration: none;
+    }
     </style>
     """, unsafe_allow_html=True)
 
-# ========================
-# IMAGE INPUT (OUTSIDE FORM)
-# ========================
-def get_image():
-    st.markdown("### 📸 Capture or Upload Photo")
-
-    cam = st.camera_input("Take a photo")
-    upload = st.file_uploader("Or upload image", type=["jpg","jpeg","png"])
-
-    if cam:
-        return Image.open(cam).convert("RGB")
-
-    if upload:
-        return Image.open(upload).convert("RGB")
-
-    return None
+load_css()
 
 # ========================
 # EMOTION DETECTION
 # ========================
-def detect_emotion(image):
+def detect_emotion():
+    st.info("📸 Take or upload a photo")
+
+    image_file = st.camera_input("Take Photo")
+
+    if image_file is None:
+        image_file = st.file_uploader("Or upload image", type=["jpg","jpeg","png"])
+
+    if image_file is None:
+        return None, None
+
+    image = Image.open(image_file).convert("RGB")
     frame = np.array(image)
-    frame = cv2.resize(frame, (640,480))
+
+    st.image(image, caption="Uploaded Image", use_container_width=True)
+
+    frame = cv2.resize(frame, (640, 480))
 
     try:
         result = DeepFace.analyze(
             frame,
             actions=['emotion'],
             enforce_detection=False,
-            detector_backend='retinaface'
+            detector_backend='opencv'
         )
-        return result[0]["dominant_emotion"], frame
+
+        emotion = result[0]["dominant_emotion"]
+        return emotion, frame
+
     except:
-        return None, frame
+        return "no face detected", frame
 
 # ========================
-# SPOTIFY
+# GET 30 SONGS
 # ========================
 def get_spotify_recommendations(query, emotion):
+
+    songs = []
+    seen = set()
+
     try:
-        songs = []
-        seen = set()
+        results = sp.search(q=query, type="artist", limit=1)
+        artists = results.get("artists", {}).get("items", [])
 
-        # 🔹 Try artist top tracks
-        artist = sp.search(q=query, type="artist", limit=1)
-        items = artist.get("artists", {}).get("items", [])
+        if artists:
+            artist_id = artists[0]["id"]
 
-        if items:
-            tracks = sp.artist_top_tracks(items[0]["id"], country="IN")
-            for t in tracks["tracks"]:
-                url = t["external_urls"]["spotify"]
-                if url not in seen:
-                    songs.append((t["name"], url))
-                    seen.add(url)
-                if len(songs) >= 30:
-                    return songs
+            albums = sp.artist_albums(artist_id, limit=10)
 
-        # 🔹 If not enough → search playlists
-        mood = emotion_genres.get(emotion, "pop")
-        playlists = sp.search(q=f"{query} {mood}", type="playlist", limit=5)
+            for album in albums["items"]:
+                tracks = sp.album_tracks(album["id"])
 
-        for pl in playlists["playlists"]["items"]:
-            tracks = sp.playlist_tracks(pl["id"], limit=50)
-
-            for item in tracks["items"]:
-                track = item.get("track")
-                if track:
-                    url = track["external_urls"]["spotify"]
+                for t in tracks["items"]:
+                    url = f"https://open.spotify.com/track/{t['id']}"
                     if url not in seen:
-                        songs.append((track["name"], url))
+                        songs.append({
+                            "name": t["name"],
+                            "url": url
+                        })
                         seen.add(url)
 
-                if len(songs) >= 30:
-                    return songs
+        # fallback by emotion genre
+        if len(songs) < 30:
+            genre = emotion_genres.get(emotion, "pop")
+            playlists = sp.search(q=genre, type="playlist", limit=3)
 
-        return songs
+            for p in playlists["playlists"]["items"]:
+                tracks = sp.playlist_tracks(p["id"])
+
+                for item in tracks["items"]:
+                    track = item["track"]
+                    if track:
+                        url = track["external_urls"]["spotify"]
+                        if url not in seen:
+                            songs.append({
+                                "name": track["name"],
+                                "url": url
+                            })
+                            seen.add(url)
+
+        return songs[:30]
 
     except Exception as e:
         st.error(f"Spotify Error: {e}")
         return []
 
-
 # ========================
 # YOUTUBE FALLBACK
 # ========================
 def get_youtube_videos(query):
-    req=youtube.search().list(q=query,part="snippet",type="video",maxResults=5)
-    res=req.execute()
-    vids=[]
-    for item in res["items"]:
-        vids.append((item["snippet"]["title"],
-                     f"https://youtube.com/watch?v={item['id']['videoId']}"))
-    return vids
+
+    request = youtube.search().list(
+        q=query,
+        part="snippet",
+        type="video",
+        maxResults=10
+    )
+    response = request.execute()
+
+    videos = []
+
+    for item in response["items"]:
+        videos.append({
+            "name": item["snippet"]["title"],
+            "url": f"https://www.youtube.com/watch?v={item['id']['videoId']}"
+        })
+
+    return videos
 
 # ========================
-# MAIN APP
+# MAIN UI
 # ========================
-def main():
-    st.set_page_config(page_title="Mood Music Recommender", page_icon="🎧")
-    load_css()
+st.markdown("<h1 style='text-align:center'>🎧 Mood Music Recommender</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align:center'>Let your face decide your music</p>", unsafe_allow_html=True)
 
-    st.markdown("<h1>🎧 Mood Music Recommender</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align:center'>Let your face decide your music 🎶</p>", unsafe_allow_html=True)
+artist = st.text_input("Artist or Genre")
 
-    image = get_image()
+if st.button("Detect Mood & Play Music"):
 
-    if image:
-        st.image(image, caption="Selected Image", use_column_width=True)
+    if not artist.strip():
+        st.warning("Enter an artist or genre")
+        st.stop()
 
-    with st.form("user_input"):
-        st.markdown("### 🎤 Choose your vibe")
-        artist = st.text_input("Artist or Genre", placeholder="Adele, Arijit, Pop...")
-        submit = st.form_submit_button("🎶 Detect Mood & Play Music")
+    emotion, frame = detect_emotion()
 
-    if submit:
-        if image is None:
-            st.warning("Please capture or upload a photo.")
-            return
+    if emotion is None:
+        st.info("Capture or upload an image")
+        st.stop()
 
-        if not artist.strip():
-            st.warning("Enter artist or genre.")
-            return
+    if emotion == "no face detected":
+        st.error("No face detected. Try better lighting.")
+        st.stop()
 
-        emotion, frame = detect_emotion(image)
+    emoji = emoji_map.get(emotion, "")
+    st.markdown(f"## {emoji} {emotion.capitalize()}")
 
-        if emotion is None:
-            st.error("Face not detected. Try good lighting & centered face.")
-            return
+    with st.spinner("Finding perfect music..."):
+        songs = get_spotify_recommendations(artist, emotion)
 
-        emoji = emoji_map.get(emotion,"")
-        st.markdown(f"<h2>{emoji} {emotion.capitalize()}</h2>", unsafe_allow_html=True)
+    if songs:
+        st.subheader("🎵 Recommendations")
 
-        with st.spinner("🎧 Finding music..."):
-            songs = get_spotify_recommendations(artist, emotion)
+        for s in songs:
+            st.markdown(
+                f"<div class='song-card'><b>{s['name']}</b><br>"
+                f"<a href='{s['url']}' target='_blank'>Open in Spotify</a></div>",
+                unsafe_allow_html=True
+            )
 
-        if songs:
-            for name,url in songs:
-                st.markdown(f"<div class='song-card'><b>{name}</b><br><a href='{url}' target='_blank'>▶ Open in Spotify</a></div>", unsafe_allow_html=True)
-        else:
-            vids = get_youtube_videos(f"{artist} {emotion} music")
-            for name,url in vids:
-                st.markdown(f"<div class='song-card'><b>{name}</b><br><a href='{url}' target='_blank'>▶ Watch</a></div>", unsafe_allow_html=True)
+    else:
+        st.warning("Spotify unavailable → YouTube results")
 
-if __name__ == "__main__":
-    main()
+        videos = get_youtube_videos(f"{artist} {emotion} music")
+
+        for v in videos:
+            st.markdown(
+                f"<div class='song-card'><b>{v['name']}</b><br>"
+                f"<a href='{v['url']}' target='_blank'>Watch</a></div>",
+                unsafe_allow_html=True
+            )
+
+st.markdown("<p style='text-align:center;opacity:0.5'>Made with ❤️</p>", unsafe_allow_html=True)
