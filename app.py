@@ -143,7 +143,7 @@ def get_spotify_recommendations(query, emotion):
     seen = set()
 
     try:
-        # 1️⃣ Artist search
+        # 1️⃣ Artist top tracks
         artist_results = sp.search(q=query, type="artist", limit=1)
         artists = artist_results.get("artists", {}).get("items", [])
 
@@ -151,25 +151,33 @@ def get_spotify_recommendations(query, emotion):
             artist_id = artists[0]["id"]
             top_tracks = sp.artist_top_tracks(artist_id, country="IN")
 
-            for track in top_tracks["tracks"]:
-                url = track["external_urls"]["spotify"]
-                if url not in seen:
-                    songs.append((track["name"], url))
-                    seen.add(url)
-
-        # 2️⃣ Playlist search for more tracks
-        playlists = sp.search(q=query, type="playlist", limit=3)
-
-        for playlist in playlists["playlists"]["items"]:
-            tracks = sp.playlist_tracks(playlist["id"], limit=50)
-
-            for item in tracks["items"]:
-                track = item.get("track")
-                if track:
+            for track in top_tracks.get("tracks", []):
+                if track and track.get("external_urls"):
                     url = track["external_urls"]["spotify"]
                     if url not in seen:
                         songs.append((track["name"], url))
                         seen.add(url)
+
+        # 2️⃣ Playlist search for MORE songs
+        playlists = sp.search(q=query, type="playlist", limit=5)
+
+        for playlist in playlists.get("playlists", {}).get("items", []):
+            tracks = sp.playlist_tracks(playlist["id"], limit=100)
+
+            for item in tracks.get("items", []):
+                track = item.get("track")
+
+                if not track:
+                    continue
+
+                if track.get("external_urls") is None:
+                    continue
+
+                url = track["external_urls"]["spotify"]
+
+                if url not in seen:
+                    songs.append((track["name"], url))
+                    seen.add(url)
 
                 if len(songs) >= 20:
                     return songs
@@ -177,27 +185,32 @@ def get_spotify_recommendations(query, emotion):
         # 3️⃣ Emotion fallback
         if len(songs) < 20:
             mood = emotion_genres.get(emotion, "pop")
-            playlists = sp.search(q=mood, type="playlist", limit=1)
 
-            if playlists["playlists"]["items"]:
-                pid = playlists["playlists"]["items"][0]["id"]
-                tracks = sp.playlist_tracks(pid, limit=50)
+            playlists = sp.search(q=mood, type="playlist", limit=2)
 
-                for item in tracks["items"]:
+            for playlist in playlists.get("playlists", {}).get("items", []):
+                tracks = sp.playlist_tracks(playlist["id"], limit=100)
+
+                for item in tracks.get("items", []):
                     track = item.get("track")
-                    if track:
-                        url = track["external_urls"]["spotify"]
-                        if url not in seen:
-                            songs.append((track["name"], url))
-                            seen.add(url)
+
+                    if not track or not track.get("external_urls"):
+                        continue
+
+                    url = track["external_urls"]["spotify"]
+
+                    if url not in seen:
+                        songs.append((track["name"], url))
+                        seen.add(url)
 
                     if len(songs) >= 20:
-                        break
+                        return songs
 
     except Exception as e:
         st.error(f"Spotify error: {e}")
 
     return songs[:20]
+
 
 # ========================
 # YOUTUBE FALLBACK
