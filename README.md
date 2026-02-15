@@ -1,14 +1,20 @@
 # **Mood Music Recommender**
-## 🚀 **Project Overview**
+
+🌐 **Live App:**  
+https://mood-music-recommender0202.streamlit.app/
+
+---
+## **Project Overview**
 The **Mood Music Recommender** is a web app that generates personalized music playlists based on the user’s mood. By integrating **Spotify's API** and **DeepFace** for facial emotion recognition, this app provides real-time music recommendations through an intuitive **Streamlit** interface.
 
-## 🔑 **Key Features**
+##  **Key Features**
 - **Mood Detection**: Uses **DeepFace** to analyze facial expressions and determine the user's emotional state (e.g., happy, sad, angry).
 - **Spotify Integration**: Fetches music playlists that match the detected mood via the **Spotify API**.
 - **YouTube Fallback**: In case Spotify is unavailable, the app falls back to **YouTube** for music recommendations.
 - **User-friendly Interface**: Built with **Streamlit**, offering an interactive UI for easy user engagement.
+- Returns up to **20 mood-based song recommendations**.
 
-## ⚙️ **Tech Stack**
+##  **Tech Stack**
 - **Frontend**: **Streamlit** (for web app development).
 - **Backend**: **Python** (handles mood detection, music recommendations).
 - **APIs**:
@@ -16,6 +22,14 @@ The **Mood Music Recommender** is a web app that generates personalized music pl
   - **DeepFace**: For facial emotion recognition.
   - **YouTube API**: For fallback music recommendations.
 - **Libraries**: **requests**, **dotenv**, **numpy**, **pandas**, **opencv-python**, **spotipy**, etc.
+
+## ⚙️ How It Works
+1. User uploads or captures an image  
+2. DeepFace detects the dominant emotion  
+3. Emotion is mapped to a music mood  
+4. Spotify retrieves matching tracks  
+5. YouTube fallback activates if needed  
+6. Recommendations are displayed instantly 
 
 ## 🛠 **Installation & Setup**
 Follow these steps to set up the project locally:
